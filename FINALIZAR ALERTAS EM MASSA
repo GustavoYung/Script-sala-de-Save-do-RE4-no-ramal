@@ -1,0 +1,142 @@
+// ==UserScript==
+// @name         RE4 - Workflow Híbrido V2.0
+// @namespace    http://tampermonkey.net/
+// @version      2.0
+// @description  Usa a navegação de grade que funcionou + preenchimento automático
+// @author       Você
+// @match        *://*/*
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    let linhaAtual = 0;
+    let navegando = false;
+
+    const esperar = ms => new Promise(res => setTimeout(res, ms));
+
+    // --- FUNÇÃO DE PREENCHIMENTO (A que deu sucesso no Passo 4) ---
+    async function preencherFormulario() {
+        console.log("🛠️ Janela aberta. Iniciando preenchimento...");
+        const btnMenu = document.querySelector('#divFinalizarWokflowImagem');
+        if (!btnMenu) {
+            console.log("⚠️ Menu não encontrado, talvez o clique na grade falhou ou o site está lento.");
+            return;
+        }
+
+        // 1. Abrir Menu
+        btnMenu.click(); await esperar(4200);
+
+        // 2. Motivo (Indevido)
+        const setaM = document.querySelector('#ctl00_MainContent_FinalizarWorkflow_wndFinalizaWorkflow_C_rcbMotivo_Arrow');
+        if (setaM) {
+            setaM.click(); await esperar(1500);
+            const itensM = document.querySelectorAll('.rcbList li, .rcbItem, .rcbHovered');
+            const alvo = Array.from(itensM).find(el => el.textContent.trim().toUpperCase() === "INDEVIDO");
+            if (alvo) alvo.click();
+        }
+        await esperar(1200);
+
+        // 3. Ocorrência (TRATATIVA CLIENTE)
+        const campoOcor = document.querySelector('#ctl00_MainContent_FinalizarWorkflow_wndFinalizaWorkflow_C_rcbTipoOcorrencia_Input');
+        if (campoOcor) {
+            campoOcor.value = "TRATATIVA CLIENTE";
+            campoOcor.dispatchEvent(new Event('input', { bubbles: true }));
+            await esperar(1800);
+            const itensO = document.querySelectorAll('.rcbList li');
+            const alvoO = Array.from(itensO).find(el => el.textContent.includes("TRATATIVA CLIENTE"));
+            if (alvoO) alvoO.click();
+        }
+        await esperar(1200);
+
+        // 4. Texto "ok"
+        const campoT = document.querySelector('#txtTexto');
+        if (campoT) { campoT.value = "ok"; campoT.dispatchEvent(new Event('input', { bubbles: true })); }
+
+        // 5. Checkbox Suspender
+        const chk = document.querySelector('#ctl00_MainContent_FinalizarWorkflow_wndFinalizaWorkflow_C_chkSuspenderWorkflowTelaOperador');
+        if (chk && !chk.checked) { chk.click(); await esperar(1500); }
+
+        // 6. Data
+        const campoD = document.querySelector('#ctl00_MainContent_FinalizarWorkflow_wndFinalizaWorkflow_C_txtDataSuspenderTelaOperador_dateInput');
+        if (campoD) {
+            campoD.value = "14/05/2026 08:00:00";
+            campoD.dispatchEvent(new Event('blur', { bubbles: true }));
+        }
+        await esperar(1200);
+
+        // 7. SALVAR
+        const btnSalvar = document.querySelector('#ctl00_MainContent_FinalizarWorkflow_wndFinalizaWorkflow_C_btnFinalizaWorkflow');
+        if (btnSalvar) {
+            console.log("✅ Salvando workflow...");
+            btnSalvar.click();
+        }
+    }
+
+    // --- FUNÇÃO DE CLIQUE NA GRADE (A que funcionou no teste) ---
+    function clicarNaLinha(index) {
+        const idAlvo = `ctl00_MainContent_rpbGeral_i1_gridVeiculos_ctl00__${index}`;
+        const elemento = document.getElementById(idAlvo);
+
+        if (elemento) {
+            console.log(`🖱️ Clicando na linha: ${index}`);
+            elemento.scrollIntoView({ block: 'center' });
+            elemento.focus();
+
+            // Comandos de clique reforçado
+            elemento.click();
+            elemento.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            elemento.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            elemento.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+            return true;
+        } else {
+            console.log(`❌ Linha ${index} não encontrada.`);
+            return false;
+        }
+    }
+
+    // --- CICLO PRINCIPAL ---
+    async function iniciarCiclo() {
+        if (!navegando) return;
+
+        if (linhaAtual < 100) {
+            const clicou = clicarNaLinha(linhaAtual);
+
+            if (clicou) {
+                // Espera 6 segundos para a janela abrir totalmente
+                await esperar(3000);
+
+                // Preenche o formulário e clica em salvar
+                await preencherFormulario();
+
+                // Espera 6 segundos (tempo de salvamento que o site leva)
+                console.log("⏳ Aguardando salvamento do site para pular linha...");
+                await esperar(3000);
+
+                linhaAtual++;
+                iniciarCiclo(); // Vai para a próxima linha
+            } else {
+                console.log("🏁 Fim da grade.");
+                navegando = false;
+            }
+        }
+    }
+
+    // Atalho de Teclado
+    window.addEventListener('keydown', function(e) {
+        if (e.altKey && e.key.toLowerCase() === 'g') {
+            navegando = !navegando;
+            if (navegando) {
+                console.log("🚀 MODO AUTOMÁTICO LIGADO");
+                linhaAtual = 0;
+                iniciarCiclo();
+            } else {
+                console.log("🛑 MODO AUTOMÁTICO DESLIGADO");
+            }
+        }
+    });
+
+    console.log("🎮 Robô V2.0 pronto. Aperte Alt + G para iniciar a sequência total.");
+})();
