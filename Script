@@ -1,0 +1,153 @@
+// ==UserScript==
+// @name         Ring Sound Replacer - Digitro
+// @namespace    tampermonkey-ring-replacer
+// @version      1.1
+// @description  Substitui o ring.mp3 por um áudio customizado e para o som ao clicar em Atender
+// @match        https://kothe.digitro.cloud/*
+// @run-at       document-start
+// @grant        none
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+    // URL original que queremos interceptar
+    const ORIGINAL_RING_MATCH = 'ring.mp3';
+
+    // Link direto (raw) do arquivo no GitHub
+    const CUSTOM_RING_URL = 'https://raw.githubusercontent.com/Yungu7/Audio-save-RE4/main/save-room-resident-evil-4-classico-o-save.mp3';
+
+    // Guarda todos os elementos de áudio que estão tocando o ring, para poder pausar depois
+    const activeRingAudios = new Set();
+
+    function isRingSrc(src) {
+        return typeof src === 'string' && src.includes(ORIGINAL_RING_MATCH);
+    }
+
+    function swapIfRing(src) {
+        return isRingSrc(src) ? CUSTOM_RING_URL : src;
+    }
+
+    // 1) Intercepta `new Audio(src)`
+    const OriginalAudio = window.Audio;
+    function PatchedAudio(src) {
+        const finalSrc = swapIfRing(src);
+        const audio = new OriginalAudio(finalSrc);
+        if (finalSrc === CUSTOM_RING_URL) activeRingAudios.add(audio);
+        return audio;
+    }
+    PatchedAudio.prototype = OriginalAudio.prototype;
+    window.Audio = PatchedAudio;
+
+    // 2) Intercepta atribuições a `.src` em qualquer <audio>/<video>
+    const srcDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+    if (srcDescriptor && srcDescriptor.configurable) {
+        Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+            get: srcDescriptor.get,
+            set: function (value) {
+                const finalSrc = swapIfRing(value);
+                if (finalSrc === CUSTOM_RING_URL) activeRingAudios.add(this);
+                srcDescriptor.set.call(this, finalSrc);
+            },
+            configurable: true
+        });
+    }
+
+    // 3) Intercepta setAttribute('src', ...) — caso o site monte o <audio> assim
+    const originalSetAttribute = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function (name, value) {
+        if (name === 'src' && isRingSrc(value)) {
+            value = CUSTOM_RING_URL;
+            activeRingAudios.add(this);
+        }
+        return originalSetAttribute.call(this, name, value);
+    };
+
+    // 4) Trata qualquer <audio>/<video> já existente ou que apareça depois no DOM.
+    //    Isso cobre o caso mais comum: a tag já vem com src="ring.mp3" direto no HTML,
+    //    caso em que setAttribute()/`.src=` via JS (hooks acima) nunca são chamados,
+    //    porque o parser do navegador seta o atributo internamente.
+    function patchMediaElement(el) {
+        try {
+            const currentSrc = el.getAttribute('src') || el.currentSrc || el.src;
+            if (isRingSrc(currentSrc) && el.src !== CUSTOM_RING_URL) {
+                console.log('[RingReplacer] Detectado <audio>/<video> com ring.mp3, substituindo:', el);
+                const wasPlaying = !el.paused;
+                el.setAttribute('src', CUSTOM_RING_URL);
+                el.src = CUSTOM_RING_URL;
+                activeRingAudios.add(el);
+                if (wasPlaying) {
+                    el.play().catch((err) => console.log('[RingReplacer] play() falhou:', err));
+                }
+            }
+        } catch (e) {
+            console.log('[RingReplacer] erro ao tentar substituir elemento:', e);
+        }
+    }
+
+    function scanExistingMedia() {
+        document.querySelectorAll('audio, video').forEach(patchMediaElement);
+    }
+
+    // Observa inserções/alterações no DOM inteiro
+    const observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+            m.addedNodes && m.addedNodes.forEach((node) => {
+                if (node.nodeType !== 1) return; // só elementos
+                if (node.tagName === 'AUDIO' || node.tagName === 'VIDEO') {
+                    patchMediaElement(node);
+                }
+                if (node.querySelectorAll) {
+                    node.querySelectorAll('audio, video').forEach(patchMediaElement);
+                }
+            });
+            if (m.type === 'attributes' && m.attributeName === 'src') {
+                patchMediaElement(m.target);
+            }
+        }
+    });
+
+    function startObserving() {
+        observer.observe(document.documentElement, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['src']
+        });
+        scanExistingMedia();
+    }
+
+    if (document.documentElement) {
+        startObserving();
+    } else {
+        document.addEventListener('DOMContentLoaded', startObserving);
+    }
+
+    // Rede de segurança: varredura periódica, caso algo escape do observer
+    setInterval(scanExistingMedia, 1000);
+
+    // 5) Para o áudio custom assim que "Atender" for clicado
+    function stopAllRingAudios() {
+        activeRingAudios.forEach((audio) => {
+            try {
+                audio.pause();
+                audio.currentTime = 0;
+            } catch (e) {
+                /* ignora */
+            }
+        });
+        activeRingAudios.clear();
+    }
+
+    // Delegação de evento no document (funciona mesmo se o botão for recriado dinamicamente pelo ExtJS)
+    document.addEventListener(
+        'click',
+        function (e) {
+            const el = e.target.closest('button, .x-btn-text');
+            if (el && el.textContent.trim() === 'Atender') {
+                stopAllRingAudios();
+            }
+        },
+        true // captura, para garantir que rode antes de outros handlers pararem a propagação
+    );
+})();
