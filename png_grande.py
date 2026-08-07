@@ -1,92 +1,210 @@
 from PIL import Image
-import numpy as np
-import os
 from pathlib import Path
-import time
+import os
+import struct
+import zlib
 
 # =========================================================
-# CONFIGURAÇÕES
+# CONFIG
 # =========================================================
 
-# 19000 x 19000 RGB = ~1,08 GB de dados brutos
-# Como os pixels são aleatórios, o PNG praticamente
-# não conseguirá comprimir a imagem.
-WIDTH = 19000
-HEIGHT = 19000
+TARGET_GB = 5
+TARGET_SIZE = TARGET_GB * 1024 * 1024 * 1024
 
-# Descobre a Área de Trabalho
+WIDTH = 4000
+HEIGHT = 4000
+
 desktop = Path.home() / "Desktop"
 
-# Caso o Windows esteja em português e use "Área de Trabalho"
 if not desktop.exists():
     desktop = Path.home() / "Área de Trabalho"
 
-output = desktop / "gigante_1GB.png"
+output = desktop / "gigante_5GB.png"
 
 print("=" * 60)
-print("GERADOR DE PNG GIGANTE")
+print("CRIADOR DE PNG GIGANTE")
 print("=" * 60)
-print(f"Resolução: {WIDTH:,} x {HEIGHT:,}")
-print(f"Pixels: {WIDTH * HEIGHT:,}")
-print(f"Destino: {output}")
-print()
-print("Gerando pixels aleatórios...")
-print("Isso pode consumir bastante RAM e demorar alguns minutos.")
+print(f"Tamanho alvo: {TARGET_GB} GB")
+print(f"Arquivo: {output}")
 print()
 
-inicio = time.time()
-
 # =========================================================
-# GERAR IMAGEM
+# CRIA PNG PRETO NORMAL
 # =========================================================
 
-# Gerador moderno do NumPy
-rng = np.random.default_rng()
+print("Criando imagem preta...")
 
-# Cria pixels RGB aleatórios
-pixels = rng.integers(
-    0,
-    256,
-    size=(HEIGHT, WIDTH, 3),
-    dtype=np.uint8
+img = Image.new(
+    "RGB",
+    (WIDTH, HEIGHT),
+    color="black"
 )
 
-print("Pixels gerados.")
-print("Criando imagem...")
-
-img = Image.fromarray(pixels, "RGB")
-
-# Libera referência extra
-del pixels
-
-print("Salvando PNG...")
-print("Não feche o programa.")
-
-# compress_level=0:
-# praticamente desativa a compressão DEFLATE,
-# deixando o arquivo próximo do tamanho bruto.
 img.save(
     output,
     format="PNG",
-    compress_level=0
+    compress_level=9
+)
+
+initial_size = os.path.getsize(output)
+
+print(
+    f"PNG base criado: "
+    f"{initial_size / 1024 / 1024:.2f} MB"
+)
+
+# =========================================================
+# LOCALIZA IEND
+# =========================================================
+
+with open(output, "rb") as f:
+    png_data = f.read()
+
+# PNG termina com este chunk
+iend_signature = b"\x00\x00\x00\x00IEND\xaeB`\x82"
+
+iend_position = png_data.rfind(iend_signature)
+
+if iend_position == -1:
+    raise RuntimeError("Chunk IEND não encontrado.")
+
+before_iend = png_data[:iend_position]
+iend = png_data[iend_position:]
+
+# não precisamos mais manter tudo
+del png_data
+
+# =========================================================
+# FUNÇÃO PARA CRIAR CHUNK PNG
+# =========================================================
+
+def create_chunk(chunk_type, data):
+    length = struct.pack(">I", len(data))
+
+    crc = zlib.crc32(chunk_type)
+    crc = zlib.crc32(data, crc)
+    crc = struct.pack(">I", crc & 0xffffffff)
+
+    return (
+        length +
+        chunk_type +
+        data +
+        crc
+    )
+
+# =========================================================
+# REESCREVE ARQUIVO
+# =========================================================
+
+print()
+print("Expandindo arquivo para 5 GB...")
+print("Isso não exige vários GB de RAM.")
+print()
+
+temp_output = desktop / "gigante_temp.png"
+
+with open(temp_output, "wb") as out:
+
+    out.write(before_iend)
+
+    current_size = len(before_iend)
+
+    # cada chunk terá 64 MB
+    CHUNK_DATA_SIZE = 64 * 1024 * 1024
+
+    counter = 0
+
+    while True:
+
+        # 12 bytes de overhead por chunk
+        remaining = TARGET_SIZE - current_size - len(iend)
+
+        if remaining <= 12:
+            break
+
+        data_size = min(
+            CHUNK_DATA_SIZE,
+            remaining - 12
+        )
+
+        if data_size <= 0:
+            break
+
+        # chunk privado
+        chunk_type = b"ruSt"
+
+        data = b"\x00" * data_size
+
+        chunk = create_chunk(
+            chunk_type,
+            data
+        )
+
+        out.write(chunk)
+
+        current_size += len(chunk)
+
+        counter += 1
+
+        gb_written = current_size / (1024 ** 3)
+
+        print(
+            f"\rGravado: "
+            f"{gb_written:.2f} / "
+            f"{TARGET_GB:.2f} GB",
+            end=""
+        )
+
+    # ajuste final
+    remaining = TARGET_SIZE - current_size - len(iend)
+
+    if remaining >= 12:
+
+        data_size = remaining - 12
+
+        chunk = create_chunk(
+            b"ruSt",
+            b"\x00" * data_size
+        )
+
+        out.write(chunk)
+
+    out.write(iend)
+
+print()
+
+# remove original
+os.remove(output)
+
+# renomeia temporário
+os.rename(
+    temp_output,
+    output
 )
 
 # =========================================================
 # RESULTADO
 # =========================================================
 
-size_bytes = os.path.getsize(output)
-size_mb = size_bytes / (1024 ** 2)
-size_gb = size_bytes / (1024 ** 3)
-
-tempo = time.time() - inicio
+final_size = os.path.getsize(output)
 
 print()
 print("=" * 60)
 print("CONCLUÍDO")
 print("=" * 60)
-print(f"Arquivo: {output}")
-print(f"Tamanho: {size_mb:.2f} MB")
-print(f"Tamanho: {size_gb:.3f} GB")
-print(f"Tempo: {tempo:.1f} segundos")
+
+print(
+    f"Arquivo: {output}"
+)
+
+print(
+    f"Tamanho em bytes: "
+    f"{final_size:,}"
+)
+
+print(
+    f"Tamanho em GB: "
+    f"{final_size / (1024**3):.4f} GB"
+)
+
 print("=" * 60)
