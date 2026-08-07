@@ -1,0 +1,8 @@
+# Gere um XML com recurção infinita (tamanho explode ao ser descomprimido)
+xml_bomb = '''<?xml version="1.0"?>
+<root>
+  <element>{}</element>
+</root>'''.format('<element>{}</element>' * 1000)
+
+with open("bomb.xml", "w") as f:
+    f.write(xml_bomb)
