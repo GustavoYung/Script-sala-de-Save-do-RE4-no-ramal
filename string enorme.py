@@ -1,11 +1,37 @@
-# gera_frase_gigante.py
+import subprocess
 
-TAMANHO = 1_000_000  # 1 milhão de caracteres
+# ==========================================
+# CONFIGURAÇÃO
+# ==========================================
 
+# Quantidade de caracteres
+TAMANHO = 1_000_000
+
+# Gera a string
 texto = "A" * TAMANHO
 
-with open("frase_gigante.txt", "w", encoding="utf-8") as arquivo:
-    arquivo.write(texto)
+print(f"Gerando {TAMANHO:,} caracteres...")
 
-print(f"Arquivo criado com {len(texto):,} caracteres.")
-print("Arquivo: frase_gigante.txt")
+# ==========================================
+# COPIA PARA O CTRL + V DO WINDOWS
+# ==========================================
+
+process = subprocess.Popen(
+    ["clip"],
+    stdin=subprocess.PIPE,
+    text=True
+)
+
+process.communicate(texto)
+
+print()
+print("=" * 50)
+print("COPIADO!")
+print("=" * 50)
+print(f"{TAMANHO:,} caracteres estão no Ctrl + V.")
+print()
+print("Agora abra o campo do seu site e pressione:")
+print("CTRL + V")
+print("=" * 50)
+
+input("\nPressione ENTER para fechar...")
