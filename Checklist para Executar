@@ -1,0 +1,6 @@
+Slowloris: Instale slowhttptest e rode com -t GET -u http://site.
+HTTP Flood: Salve e execute o script Python com 500 threads.
+SVG/XML: Gere o arquivo e envie via upload ou POST.
+SQLi Bomb: Teste o endpoint de login com payload recursivo.
+Headers: Envie 500 requisições com headers de 100KB.
+WebSocket: Abra o console do navegador e rode o JS.
